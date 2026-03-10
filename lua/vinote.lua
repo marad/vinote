@@ -34,7 +34,6 @@ local function get_notes_dir(callback)
     callback(notes_dir)
     return
   end
-  -- Read from config or use default
   local home = vim.fn.expand("~")
   local config_path = home .. "/.config/vinote/config.toml"
   if vim.fn.filereadable(config_path) == 1 then
@@ -52,44 +51,43 @@ local function get_notes_dir(callback)
   callback(notes_dir)
 end
 
---- Open a note file from a Note JSON object.
----@param note table
-local function open_note(note)
-  get_notes_dir(function(dir)
-    local path = dir .. "/" .. note.path .. ".md"
-    vim.cmd.edit(path)
-  end)
+--- Build picker items from notes JSON, with absolute file paths.
+---@param notes table[]
+---@param dir string
+---@return table[]
+local function notes_to_items(notes, dir)
+  local items = {}
+  for _, note in ipairs(notes) do
+    table.insert(items, {
+      text = note.title,
+      file = dir .. "/" .. note.path .. ".md",
+      note = note,
+    })
+  end
+  return items
+end
+
+--- Open a snacks picker for notes.
+---@param title string
+---@param items table[]
+---@param dir string notes_dir absolute path
+local function notes_picker(title, items, dir)
+  Snacks.picker({
+    title = title,
+    items = items,
+    cwd = dir,
+    format = "text",
+    preview = "file",
+    confirm = "jump",
+  })
 end
 
 --- Open note picker (all notes, fuzzy search by title).
 function M.open()
   vn_async({ "query", "--all", "--json" }, function(output)
     local notes = vim.json.decode(output) or {}
-    local items = {}
-    for _, note in ipairs(notes) do
-      table.insert(items, {
-        text = note.title,
-        file = note.path .. ".md",
-        note = note,
-      })
-    end
-
     get_notes_dir(function(dir)
-      require("snacks.picker").pick({
-        title = "Open Note",
-        items = items,
-        format = function(item)
-          return { { item.text, "Normal" } }
-        end,
-        preview = function(ctx)
-          local path = dir .. "/" .. ctx.item.file
-          return require("snacks.picker.preview").file(ctx, { path = path })
-        end,
-        confirm = function(picker, item)
-          picker:close()
-          open_note(item.note)
-        end,
-      })
+      notes_picker("Open Note", notes_to_items(notes, dir), dir)
     end)
   end)
 end
@@ -97,7 +95,7 @@ end
 --- Search notes content (live grep via snacks).
 function M.search()
   get_notes_dir(function(dir)
-    require("snacks.picker").grep({ dirs = { dir } })
+    Snacks.picker.grep({ dirs = { dir } })
   end)
 end
 
@@ -105,31 +103,8 @@ end
 function M.topics()
   vn_async({ "query", "--tag=topic", "--not=archived", "--json" }, function(output)
     local notes = vim.json.decode(output) or {}
-    local items = {}
-    for _, note in ipairs(notes) do
-      table.insert(items, {
-        text = note.title,
-        file = note.path .. ".md",
-        note = note,
-      })
-    end
-
     get_notes_dir(function(dir)
-      require("snacks.picker").pick({
-        title = "Topics",
-        items = items,
-        format = function(item)
-          return { { item.text, "Normal" } }
-        end,
-        preview = function(ctx)
-          local path = dir .. "/" .. ctx.item.file
-          return require("snacks.picker.preview").file(ctx, { path = path })
-        end,
-        confirm = function(picker, item)
-          picker:close()
-          open_note(item.note)
-        end,
-      })
+      notes_picker("Topics", notes_to_items(notes, dir), dir)
     end)
   end)
 end
@@ -138,7 +113,6 @@ end
 function M.backlinks()
   get_notes_dir(function(dir)
     local buf_path = vim.api.nvim_buf_get_name(0)
-    -- Make path relative to notes_dir, strip .md
     local rel = buf_path:gsub("^" .. vim.pesc(dir) .. "/", ""):gsub("%.md$", "")
 
     vn_async({ "backlinks", rel }, function(output)
@@ -147,31 +121,7 @@ function M.backlinks()
         vim.notify("No backlinks found", vim.log.levels.INFO)
         return
       end
-
-      local items = {}
-      for _, note in ipairs(notes) do
-        table.insert(items, {
-          text = note.title,
-          file = note.path .. ".md",
-          note = note,
-        })
-      end
-
-      require("snacks.picker").pick({
-        title = "Backlinks",
-        items = items,
-        format = function(item)
-          return { { item.text, "Normal" } }
-        end,
-        preview = function(ctx)
-          local path = dir .. "/" .. ctx.item.file
-          return require("snacks.picker.preview").file(ctx, { path = path })
-        end,
-        confirm = function(picker, item)
-          picker:close()
-          open_note(item.note)
-        end,
-      })
+      notes_picker("Backlinks", notes_to_items(notes, dir), dir)
     end)
   end)
 end
@@ -181,7 +131,6 @@ function M.follow_link()
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2] + 1
 
-  -- Find [[...]] surrounding cursor
   local link = nil
   for s, target, e in line:gmatch("()%[%[([^%]|]+)[^%]]*%]%]()") do
     if col >= s and col <= e then
@@ -191,7 +140,6 @@ function M.follow_link()
   end
 
   if not link then
-    -- Fallback to default gf
     vim.cmd("normal! gf")
     return
   end
@@ -215,23 +163,18 @@ function M.weekly()
       return
     end
 
-    -- If weekly note doesn't exist, create it first
-    if not data.file_exists then
-      vn_async({ "weekly", "--create" }, function()
-        -- Refresh the view
-        M.weekly()
-      end)
-      return
-    end
+    -- Show float regardless of file existence
 
-    -- Build buffer content
     local lines = {}
     table.insert(lines, "# " .. data.week .. " — " .. data.date_range)
     table.insert(lines, "")
 
+    local meetings = type(data.meetings) == "table" and data.meetings or {}
+    local topics = type(data.topics) == "table" and data.topics or {}
+
     table.insert(lines, "## Meetings")
-    if data.meetings and #data.meetings > 0 then
-      for _, m in ipairs(data.meetings) do
+    if #meetings > 0 then
+      for _, m in ipairs(meetings) do
         table.insert(lines, "  - " .. m.title)
       end
     else
@@ -240,8 +183,8 @@ function M.weekly()
 
     table.insert(lines, "")
     table.insert(lines, "## Topics")
-    if data.topics and #data.topics > 0 then
-      for _, t in ipairs(data.topics) do
+    if #topics > 0 then
+      for _, t in ipairs(topics) do
         table.insert(lines, "  - " .. t.title)
       end
     else
@@ -250,14 +193,12 @@ function M.weekly()
 
     -- Collect selectable items by line number
     local selectable = {}
-    local line_idx = 1
-    for _, l in ipairs(lines) do
+    local all_notes = {}
+    vim.list_extend(all_notes, meetings)
+    vim.list_extend(all_notes, topics)
+    for line_idx, l in ipairs(lines) do
       local title = l:match("^  %- (.+)")
       if title then
-        -- Find the matching note
-        local all_notes = {}
-        if data.meetings then vim.list_extend(all_notes, data.meetings) end
-        if data.topics then vim.list_extend(all_notes, data.topics) end
         for _, n in ipairs(all_notes) do
           if n.title == title then
             selectable[line_idx] = n
@@ -265,10 +206,8 @@ function M.weekly()
           end
         end
       end
-      line_idx = line_idx + 1
     end
 
-    -- Create float
     local buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
@@ -289,7 +228,6 @@ function M.weekly()
       title_pos = "center",
     })
 
-    -- Keymaps for the float
     local opts = { buffer = buf, nowait = true }
 
     vim.keymap.set("n", "q", function()
@@ -305,7 +243,9 @@ function M.weekly()
       local note = selectable[cursor[1]]
       if note then
         vim.api.nvim_win_close(win, true)
-        open_note(note)
+        get_notes_dir(function(dir)
+          vim.cmd.edit(dir .. "/" .. note.path .. ".md")
+        end)
       end
     end, opts)
 
@@ -326,7 +266,6 @@ function M.new()
         return
       end
 
-      -- Ensure .md extension
       local rel_path = input
       if not rel_path:match("%.md$") then
         rel_path = rel_path .. ".md"
@@ -335,18 +274,15 @@ function M.new()
       local abs_path = dir .. "/" .. rel_path
       local title = vim.fn.fnamemodify(rel_path, ":t:r")
 
-      -- Create directory if needed
       local parent = vim.fn.fnamemodify(abs_path, ":h")
       vim.fn.mkdir(parent, "p")
 
-      -- Write frontmatter
       local content = "---\ntitle: " .. title .. "\ntags:\n---\n\n"
       local f = io.open(abs_path, "w")
       if f then
         f:write(content)
         f:close()
         vim.cmd.edit(abs_path)
-        -- Place cursor after frontmatter
         vim.api.nvim_win_set_cursor(0, { 6, 0 })
       else
         vim.notify("Failed to create: " .. abs_path, vim.log.levels.ERROR)

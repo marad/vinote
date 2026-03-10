@@ -23,7 +23,7 @@ func DefaultConfig() Config {
 		Editor:         "nvim",
 		WeeklyDir:      "Allegro/Journal/Week",
 		WeeklyTemplate: "templates/Weekly.md",
-		SkipDirs:       []string{"_plug", "Library", ".git", "archive"},
+		SkipDirs:       []string{"_plug", "Library", ".git", ".opencode", "archive"},
 	}
 }
 
