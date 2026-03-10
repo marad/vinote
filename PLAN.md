@@ -2,96 +2,109 @@
 
 ## Context
 
-Marcin uses Silverbullet for notes but is frustrated with visual glitches. He wants to move his workflow to the terminal, but **gradually** - both tools must work in parallel on the same `~/notes` directory. Existing notes and Silverbullet templates stay untouched.
+Marcin uses Silverbullet for notes but is frustrated with visual glitches. He wants to move his workflow to the terminal, but **gradually** — both tools must work in parallel on the same `~/notes` directory. Existing notes and Silverbullet templates stay untouched.
 
 **Setup:** AstroNvim v5 (lazy.nvim, snacks.nvim), notes in `~/notes` as Markdown with YAML frontmatter.
 
 **Key constraints:**
-- Coexistence with Silverbullet - no changes to existing files or template syntax
-- Ergonomic UX - interactive TUI, not long CLI commands
-- Go language, single binary
+- Coexistence with Silverbullet — no changes to existing files or template syntax
+- Ergonomic UX — everything inside Neovim, zero context-switching
+- Go CLI for indexing and data; Neovim plugin (Lua) for UI
 
 ---
 
 ## Architecture
 
+Two components working together:
+
 ```
-┌─────────────────────────────────────────┐
-│  vn (Go binary, bubbletea TUI)          │
-│                                         │
-│  [w] Weekly  [o] Open  [s] Search       │
-│  [n] New     [t] Topics [b] Backlinks   │
-│                                         │
-│  ┌─────────────────────────────────┐    │
-│  │  internal/index   - note index  │    │
-│  │  internal/query   - tag/meta    │    │
-│  │  internal/weekly  - gen weekly  │    │
-│  │  internal/tui     - bubbletea   │    │
-│  └─────────────────────────────────┘    │
-└──────────────┬──────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  Neovim + vinote.lua plugin                     │
+│                                                 │
+│  <leader>vw  Weekly view (dynamic, from index)  │
+│  <leader>vo  Open note (snacks.picker)          │
+│  <leader>vs  Search content (snacks.picker)     │
+│  <leader>vn  New note                           │
+│  <leader>vt  Topics (snacks.picker, filtered)   │
+│  <leader>vb  Backlinks for current buffer       │
+│  gf          Follow [[wikilink]]                │
+│                                                 │
+│  Uses snacks.nvim pickers, floats, splits       │
+└──────────────┬──────────────────────────────────┘
+               │ calls (shell out, reads JSON)
+               ▼
+┌─────────────────────────────────────────────────┐
+│  vn (Go binary — CLI, no TUI)                   │
+│                                                 │
+│  vn index          build/refresh index          │
+│  vn query          filter notes (JSON output)   │
+│  vn weekly         create weekly note from tpl  │
+│  vn weekly-view    dynamic weekly data (JSON)   │
+│  vn backlinks      backlinks for a note (JSON)  │
+│  vn resolve        resolve wikilink → path      │
+└──────────────┬──────────────────────────────────┘
                │ reads
                ▼
-        ~/notes/ (shared)
-               ▲
-               │ reads/writes
-┌──────────────┴──────────────────────────┐
-│  Silverbullet (browser)                 │
-│  ${query[[...]]} renders dynamically    │
-└─────────────────────────────────────────┘
+        ~/notes/ (shared with Silverbullet)
 ```
 
-**Coexistence model:** vinote is a **viewer, navigator, and launcher** — it reads the same frontmatter and wikilinks that Silverbullet uses, but never duplicates SB's template logic. For weekly notes, vinote creates new files by copying the existing SB template (preserving `${query[[...]]}` syntax), then shows a rendered preview in the TUI (resolving queries via its own index). The actual file keeps SB syntax so both tools work with the same file. Pressing Enter opens the file in nvim for editing. Single source of truth = the SB template file.
+**Coexistence model:** vinote is a **viewer, navigator, and launcher**. It reads the same frontmatter and wikilinks that Silverbullet uses, but never modifies existing files. For weekly notes, vinote creates new files from the SB template (preserving `${query[[...]]}` syntax intact). Dynamic views (meetings, topics) are built from the index — vinote does not parse SB query syntax. Both tools render the same underlying data independently.
+
+**Why not a standalone TUI?** The user already lives in Neovim with AstroNvim v5. A bubbletea TUI would mean: exit nvim → launch TUI → pick note → exit TUI → open nvim. Instead, everything happens inside nvim via snacks.nvim pickers and floats — zero context-switching, and snacks already provides fuzzy matching, live grep, and preview for free.
 
 ---
 
-## UX: Interactive TUI
+## UX: Neovim Keybindings
 
-Entry point: `vn` (short alias, binary name)
+All bindings under `<leader>v` prefix (v for vinote):
 
-### Main Menu
-```
-┌─ vinote ──────────────────────────────┐
-│                                       │
-│  [w] Weekly note       (ten tydzień)  │
-│  [o] Open note         (fuzzy)        │
-│  [s] Search content    (ripgrep)      │
-│  [n] New note                         │
-│  [t] Topics            (5 aktywnych)  │
-│  [b] Backlinks                        │
-│  [q] Quit                             │
-│                                       │
-└───────────────────────────────────────┘
-```
+| Key | Action | Implementation |
+|---|---|---|
+| `<leader>vw` | Weekly view | Float/split with dynamic weekly data from index |
+| `<leader>vo` | Open note | snacks.picker over note titles (from `vn index`) |
+| `<leader>vs` | Search content | snacks.picker with live grep |
+| `<leader>vn` | New note | Prompt for path, create file, open buffer |
+| `<leader>vt` | Topics | snacks.picker filtered by tag:topic, not archived |
+| `<leader>vb` | Backlinks | snacks.picker showing notes linking to current buffer |
+| `gf` | Follow wikilink | Resolve `[[link]]` under cursor via `vn resolve`, open file |
 
-### Flow: Weekly Note (`w`)
-1. If weekly note for current week exists → shows rendered preview (queries resolved from index)
-2. If it doesn't exist → creates it by copying the SB template file, shows rendered preview
-3. Press Enter → opens in `$EDITOR` (nvim)
+### Flow: Weekly View (`<leader>vw`)
+1. Calls `vn weekly-view --week=current` → gets JSON with meetings, topics for this week
+2. If weekly note file doesn't exist, calls `vn weekly --create` first
+3. Opens a float/split showing the dynamic view:
+   - Meetings this week (from index: tag:meeting + date in range)
+   - Active topics (from index: tag:topic, not archived)
+4. Each item is selectable — Enter opens that note
+5. `e` opens the weekly note file itself for editing
 
-### Flow: Open Note (`o`)
-1. Fuzzy finder over all note titles (inline, bubbletea-based)
-2. Select → opens in nvim
+### Flow: Open Note (`<leader>vo`)
+1. snacks.picker fuzzy search over all note titles
+2. Source: `vn query --all --json` (cached, fast)
+3. Select → opens in buffer
 
-### Flow: Search (`s`)
-1. Type query → live ripgrep results
-2. Select result → opens in nvim at matching line
+### Flow: Search (`<leader>vs`)
+1. snacks.picker with live grep (built-in snacks functionality)
+2. Select result → opens file at matching line
 
-### Flow: New Note (`n`)
-1. Prompts for path (with autocomplete on existing dirs)
-2. Optionally select template and tags
-3. Creates file, opens in nvim
+### Flow: New Note (`<leader>vn`)
+1. Prompt for path (with completion on existing dirs)
+2. Optionally select tags
+3. Creates file with frontmatter, opens buffer
 
-### Flow: Topics (`t`)
-1. Lists active topics (tag: topic, not archived) with last modified date
-2. Select → opens in nvim
+### Flow: Topics (`<leader>vt`)
+1. snacks.picker over results of `vn query --tag=topic --not=archived --json`
+2. Shows title + last modified
+3. Select → opens in buffer
 
-### Flow: Backlinks (`b`)
-1. Prompts for note (fuzzy) or uses current context
-2. Shows list of notes linking to it
-3. Select → opens in nvim
+### Flow: Backlinks (`<leader>vb`)
+1. Calls `vn backlinks --note=<current buffer path> --json`
+2. snacks.picker over results
+3. Select → opens in buffer
 
-### Direct subcommands (optional shortcuts)
-Also support `vn w`, `vn o`, `vn s query` for power users who prefer CLI.
+### CLI Shortcuts (optional, for use outside nvim)
+- `vn w` — create weekly note if missing, print path (useful for `nvim $(vn w)`)
+- `vn o <query>` — fuzzy match, print path
+- `vn s <query>` — search, print matches
 
 ---
 
@@ -100,7 +113,7 @@ Also support `vn w`, `vn o`, `vn s query` for power users who prefer CLI.
 ```
 vinote/                          (~/dev/vinote)
 ├── cmd/
-│   └── main.go                  # entry point
+│   └── main.go                  # entry point, cobra root command
 ├── internal/
 │   ├── config/
 │   │   └── config.go            # notes dir, editor, paths
@@ -110,16 +123,17 @@ vinote/                          (~/dev/vinote)
 │   ├── query/
 │   │   └── query.go             # filter by tag, frontmatter fields, date, path
 │   ├── weekly/
-│   │   └── weekly.go            # weekly note creation (from SB template) + preview rendering
+│   │   └── weekly.go            # weekly note creation from SB template
 │   ├── wikilink/
 │   │   └── wikilink.go          # parse [[links]], resolve paths, find backlinks
-│   └── tui/
-│       ├── app.go               # main bubbletea app model
-│       ├── menu.go              # main menu view
-│       ├── picker.go            # fuzzy note picker (reusable)
-│       ├── search.go            # ripgrep search view
-│       ├── weekly.go            # weekly preview + confirm view
-│       └── styles.go            # lipgloss styles
+│   └── cli/
+│       ├── index.go             # vn index command
+│       ├── query.go             # vn query command
+│       ├── weekly.go            # vn weekly + vn weekly-view commands
+│       ├── backlinks.go         # vn backlinks command
+│       └── resolve.go           # vn resolve command
+├── plugin/
+│   └── vinote.lua               # Neovim plugin (→ symlinked or copied to nvim config)
 ├── go.mod
 └── go.sum
 ```
@@ -144,63 +158,98 @@ type Note struct {
 - Extracts wikilinks via regex `\[\[([^\]|]+)(?:\|[^\]]+)?\]\]`
 - Cached as `.vinote/index.json` with mtime-based invalidation
 - Rebuild on startup if any file is newer than cache
-- **Performance:** uses `filepath.WalkDir` (no symlink stat overhead), parallel frontmatter parsing via goroutine pool, and incremental cache updates (only re-parse files with changed mtime). Tested target: <500ms for ~5000 notes
+- **Performance:** uses `filepath.WalkDir` (no symlink stat overhead), parallel frontmatter parsing via goroutine pool, and incremental cache updates (only re-parse files with changed mtime). Target: <500ms for ~5000 notes
 
 ### Query (`internal/query/`)
 Filter functions on `[]Note`:
-- `ByTag(tag string)` - notes with given tag
-- `ByPath(prefix string)` - notes under a path prefix
-- `ByFrontmatter(key, value string)` - match frontmatter field
-- `NotFrontmatter(key string)` - exclude notes with field set to true
-- `ByDateRange(field string, from, to time.Time)` - date-based filtering
+- `ByTag(tag string)` — notes with given tag
+- `ByPath(prefix string)` — notes under a path prefix
+- `ByFrontmatter(key, value string)` — match frontmatter field
+- `NotFrontmatter(key string)` — exclude notes with field set to true
+- `ByDateRange(field string, from, to time.Time)` — date-based filtering
 - Composable: `query.New(notes).ByTag("topic").NotFrontmatter("archived").Results()`
 
 ### Weekly (`internal/weekly/`)
-Manages weekly notes using the existing SB template as single source of truth:
-
-```go
-func CreateFromTemplate(templatePath string, weekStart time.Time, targetDir string) (string, error)
-func RenderPreview(idx *index.Index, filePath string) string
-```
 
 **Creating a new weekly note:**
+```go
+func CreateFromTemplate(templatePath string, weekStart time.Time, targetDir string) (string, error)
+```
 1. Read the SB template file (path from config: `weekly_template`)
 2. Replace date placeholders (week start, prev/next week links)
 3. Write to `{weekly_dir}/{date}.md` — file keeps `${query[[...]]}` syntax intact
+4. Return path to created file
 
-**Rendering a preview for TUI display:**
-1. Read the weekly note file
-2. Resolve `${query[[...]]}` expressions using the index:
-   - Topics: `ByTag("topic").NotFrontmatter("archived")`
-   - Daily notes: `ByPath("Journal/Day/").ByDateRange(...)`
-   - Meetings: `ByTag("meeting").ByDateRange("date", ...)`
-   - Tasks: `ByTag("task").ByFrontmatter("status", "completed").ByDateRange("doneDate", ...)`
-3. Return rendered markdown for display (read-only preview, original file unchanged)
+**Building weekly view data (dynamic, from index):**
+```go
+func WeeklyView(idx *index.Index, weekStart time.Time) WeeklyData
+```
+```go
+type WeeklyData struct {
+    Week       string   // "2026-W11"
+    DateRange  string   // "Mar 9–15, 2026"
+    FilePath   string   // path to weekly note file (or empty if not created)
+    FileExists bool
+    Meetings   []Note   // tag:meeting, date in week range
+    Topics     []Note   // tag:topic, not archived
+}
+```
+This does **not** parse `${query[[...]]}` from the file. It builds the view directly from index queries — same data, independent rendering. SB and vinote both query the same notes, each with their own view logic.
 
 ### Wikilink (`internal/wikilink/`)
-- `Parse(content string) []string` - extract all wikilinks from markdown
-- `Resolve(link string, notesDir string) string` - resolve to file path
-- `Backlinks(idx *index.Index, notePath string) []Note` - find notes linking to given note
+- `Parse(content string) []string` — extract all wikilinks from markdown
+- `Resolve(link string, notesDir string) string` — resolve to file path
+- `Backlinks(idx *index.Index, notePath string) []Note` — find notes linking to given note
 
-### TUI (`internal/tui/`)
-Built with [bubbletea](https://github.com/charmbracelet/bubbletea) + [lipgloss](https://github.com/charmbracelet/lipgloss) + [bubbles](https://github.com/charmbracelet/bubbles).
+### CLI Commands (`internal/cli/`)
+All commands output JSON (for consumption by the Neovim plugin) or plain text (for terminal use).
 
-Main app model manages views:
-- `menuView` - main menu with hotkeys
-- `pickerView` - fuzzy note picker (reused by Open, Topics, Backlinks)
-- `searchView` - live ripgrep search with results
-- `weeklyView` - rendered preview of weekly note (queries resolved from index), Enter to open in nvim
+| Command | Output | Description |
+|---|---|---|
+| `vn index` | status message | Rebuild index, print stats |
+| `vn query --tag=X --not=Y --path=Z --json` | JSON `[]Note` | Filter notes |
+| `vn weekly --create` | file path | Create weekly note from template if missing |
+| `vn weekly-view [--week=2026-W11]` | JSON `WeeklyData` | Dynamic weekly data from index |
+| `vn backlinks <note-path>` | JSON `[]Note` | Notes linking to given note |
+| `vn resolve <wikilink>` | file path | Resolve wikilink to absolute path |
 
-After selection/creation, TUI exits and spawns `$EDITOR` with the selected file.
+---
+
+## Neovim Plugin (`plugin/vinote.lua`)
+
+Leverages snacks.nvim (already in AstroNvim v5) for pickers, and vim.fn.system / vim.fn.jobstart for calling `vn`.
+
+Key design decisions:
+- **Async index:** calls `vn` commands via `jobstart` to avoid blocking nvim
+- **snacks.picker:** used for fuzzy note selection, search results, backlinks, topics
+- **Weekly float:** custom float window rendering `WeeklyData` JSON as formatted markdown with selectable items
+- **gf override:** in markdown buffers, intercept `gf` to resolve `[[wikilinks]]` via `vn resolve`
+
+```lua
+-- Simplified structure
+return {
+  "vinote",
+  ft = "markdown",
+  keys = {
+    { "<leader>vw", function() require("vinote").weekly() end, desc = "Weekly view" },
+    { "<leader>vo", function() require("vinote").open() end, desc = "Open note" },
+    { "<leader>vs", function() require("vinote").search() end, desc = "Search notes" },
+    { "<leader>vn", function() require("vinote").new() end, desc = "New note" },
+    { "<leader>vt", function() require("vinote").topics() end, desc = "Topics" },
+    { "<leader>vb", function() require("vinote").backlinks() end, desc = "Backlinks" },
+  },
+}
+```
 
 ---
 
 ## Weekly Note Template
 
-**Uses the existing Silverbullet template file** as the single source of truth. vinote reads this template (path configured via `weekly_template`), replaces date placeholders, and writes the new weekly note file with `${query[[...]]}` syntax preserved. This means:
+**Uses the existing Silverbullet template file** as the single source of truth for file creation. vinote reads this template (path from config: `weekly_template`), replaces date placeholders, and writes the new weekly note file with `${query[[...]]}` syntax preserved. This means:
 - You only maintain one template (the SB one)
 - SB renders queries dynamically in the browser as before
-- vinote renders queries from its index for TUI preview only (read-only, never written back to file)
+- vinote builds its weekly view from the **index** (not by parsing the file's query syntax)
+- Two independent renderers, same underlying data
 
 ---
 
@@ -214,8 +263,7 @@ editor = "nvim"
 
 # paths relative to notes_dir
 weekly_dir = "Allegro/Journal/Week"
-daily_dir = "Journal/Day"
-weekly_template = "templates/Weekly.md"  # SB template file, single source of truth
+weekly_template = "templates/Weekly.md"  # SB template file
 
 # directories to skip during indexing
 skip_dirs = ["_plug", "Library", ".git", "archive"]
@@ -223,15 +271,16 @@ skip_dirs = ["_plug", "Library", ".git", "archive"]
 
 ---
 
-## Dependencies (Go)
+## Dependencies
 
-- `github.com/charmbracelet/bubbletea` - TUI framework
-- `github.com/charmbracelet/bubbles` - TUI components (textinput, list, spinner)
-- `github.com/charmbracelet/lipgloss` - TUI styling
-- `github.com/spf13/cobra` - CLI subcommands (vn w, vn o, etc.)
-- `gopkg.in/yaml.v3` - YAML frontmatter parsing
-- `github.com/BurntSushi/toml` - config file
-- `github.com/sahilm/fuzzy` - fuzzy matching
+### Go binary
+- `github.com/spf13/cobra` — CLI subcommands
+- `gopkg.in/yaml.v3` — YAML frontmatter parsing
+- `github.com/BurntSushi/toml` — config file
+
+### Neovim plugin
+- `snacks.nvim` (already in AstroNvim v5) — pickers, floats
+- No additional nvim plugin dependencies
 
 ---
 
@@ -244,45 +293,49 @@ skip_dirs = ["_plug", "Library", ".git", "archive"]
 ### Step 2: Note index
 - Scan `~/notes`, parse frontmatter, extract wikilinks
 - JSON cache with mtime invalidation
+- `vn index` command
 
 ### Step 3: Query system
 - Filter by tag, frontmatter, date range, path prefix
 - Composable builder pattern
+- `vn query` command with JSON output
 
-### Step 4: Weekly note support
+### Step 4: Weekly note creation
 - Read existing SB template, create weekly note file (preserving `${query[[...]]}` syntax)
-- Render preview by resolving queries from index (TUI display only)
-- Open in editor
+- `vn weekly --create` command
+- `vn weekly-view` command (dynamic data from index)
 
-### Step 5: TUI - main menu + weekly view
-- bubbletea app with menu
-- Weekly: preview + confirm + create + open editor
+### Step 5: Wikilinks + backlinks
+- Parse, resolve, find backlinks
+- `vn backlinks` and `vn resolve` commands
 
-### Step 6: TUI - fuzzy picker (Open, Topics)
-- Inline fuzzy note picker
-- Filter by tag for Topics view
+### Step 6: Neovim plugin — core
+- `<leader>vo` open note (snacks.picker + `vn query`)
+- `<leader>vs` search (snacks.picker live grep)
+- `gf` wikilink resolution
 
-### Step 7: TUI - search
-- Live ripgrep integration
-- Select result → open in editor at line
+### Step 7: Neovim plugin — weekly view
+- `<leader>vw` float with dynamic weekly data
+- Selectable items (meetings, topics) → open note
+- Auto-create weekly file if missing
 
-### Step 8: Backlinks
-- Find notes linking to a given note
-- Show as pickable list in TUI
-
-### Step 9 (later): NeoVim integration
-- `~/.config/nvim/lua/plugins/vinote.lua`
-- `gf` on wikilinks, `<leader>n` prefix for vinote commands
+### Step 8: Neovim plugin — topics, backlinks, new note
+- `<leader>vt` topics picker
+- `<leader>vb` backlinks picker
+- `<leader>vn` new note flow
 
 ---
 
 ## Verification
 
-1. `vn` → TUI opens with menu, counts are correct (topics count)
-2. Press `w` → rendered preview shows current topics, daily notes, meetings (resolved from index)
-3. If file doesn't exist → created from SB template with `${query[[...]]}` syntax preserved
+1. `vn index` → builds index, reports note count and timing
+2. `vn query --tag=topic --not=archived --json` → returns active topics (matches SB)
+3. `vn weekly --create` → creates file from SB template, `${query[[...]]}` intact
 4. Same file opens fine in Silverbullet (queries render dynamically as before)
-5. Press `o` → fuzzy search finds "Pigeon", Enter opens in nvim
-6. Press `s` → typing "rate limiting" shows matching files with preview
-7. Press `t` → lists active topics (matches what Silverbullet shows on Allegro/Tematy.md)
-8. Press `b` → shows backlinks for selected note
+5. `<leader>vw` in nvim → float shows meetings and topics for this week (from index)
+6. Select a meeting in weekly view → opens that meeting note
+7. `<leader>vo` → fuzzy search finds "Pigeon", Enter opens in buffer
+8. `<leader>vs` → typing "rate limiting" shows matching files with preview
+9. `<leader>vt` → lists active topics (matches what SB shows)
+10. `<leader>vb` → shows backlinks for current buffer's note
+11. `gf` on `[[Pigeon]]` → opens the Pigeon note
