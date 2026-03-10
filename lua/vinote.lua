@@ -291,7 +291,7 @@ function M.new()
   end)
 end
 
---- Setup keybindings for markdown buffers.
+--- Setup keybindings.
 function M.setup(opts)
   opts = opts or {}
   if opts.binary then
@@ -301,19 +301,21 @@ function M.setup(opts)
     notes_dir = vim.fn.expand(opts.notes_dir)
   end
 
+  -- Global keybindings (available everywhere)
+  vim.keymap.set("n", "<leader>vw", M.weekly, { desc = "Weekly view" })
+  vim.keymap.set("n", "<leader>vo", M.open, { desc = "Open note" })
+  vim.keymap.set("n", "<leader>vs", M.search, { desc = "Search notes" })
+  vim.keymap.set("n", "<leader>vn", M.new, { desc = "New note" })
+  vim.keymap.set("n", "<leader>vt", M.topics, { desc = "Topics" })
+  vim.keymap.set("n", "<leader>vb", M.backlinks, { desc = "Backlinks" })
+
+  -- gf override only in markdown buffers
   local group = vim.api.nvim_create_augroup("vinote", { clear = true })
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     pattern = "markdown",
     callback = function(ev)
-      local bopts = { buffer = ev.buf }
-      vim.keymap.set("n", "<leader>vw", M.weekly, vim.tbl_extend("force", bopts, { desc = "Weekly view" }))
-      vim.keymap.set("n", "<leader>vo", M.open, vim.tbl_extend("force", bopts, { desc = "Open note" }))
-      vim.keymap.set("n", "<leader>vs", M.search, vim.tbl_extend("force", bopts, { desc = "Search notes" }))
-      vim.keymap.set("n", "<leader>vn", M.new, vim.tbl_extend("force", bopts, { desc = "New note" }))
-      vim.keymap.set("n", "<leader>vt", M.topics, vim.tbl_extend("force", bopts, { desc = "Topics" }))
-      vim.keymap.set("n", "<leader>vb", M.backlinks, vim.tbl_extend("force", bopts, { desc = "Backlinks" }))
-      vim.keymap.set("n", "gf", M.follow_link, vim.tbl_extend("force", bopts, { desc = "Follow wikilink" }))
+      vim.keymap.set("n", "gf", M.follow_link, { buffer = ev.buf, desc = "Follow wikilink" })
     end,
   })
 end
