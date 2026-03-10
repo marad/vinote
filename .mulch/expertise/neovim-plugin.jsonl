@@ -1,0 +1,1 @@
+{"type":"convention","content":"Async CLI calls via vim.fn.jobstart with stdout_buffered + vim.schedule for safe UI updates","classification":"tactical","recorded_at":"2026-03-10T07:03:01.116Z","id":"mx-3b44a0"}

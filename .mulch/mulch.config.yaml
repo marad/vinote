@@ -1,5 +1,7 @@
 version: '1'
-domains: []
+domains:
+  - go-cli
+  - neovim-plugin
 governance:
   max_entries: 100
   warn_entries: 150

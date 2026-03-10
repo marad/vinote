@@ -1,0 +1,2 @@
+{"type":"convention","content":"Binary entry point in cmd/vn/main.go (not cmd/main.go) so go install produces 'vn' binary name","classification":"tactical","recorded_at":"2026-03-10T07:02:46.802Z","id":"mx-c26747"}
+{"type":"pattern","name":"note-path-no-extension","description":"Note.Path stored without .md extension. CLI adds .md when resolving to filesystem","classification":"tactical","recorded_at":"2026-03-10T07:02:59.638Z","id":"mx-579edc"}
