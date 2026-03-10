@@ -156,18 +156,18 @@ type Note struct {
 - Scans `~/notes/**/*.md` recursively (all subdirectories), skips `_plug/`, `Library/`, `.git/`
 - Parses YAML frontmatter between `---` delimiters
 - Extracts wikilinks via regex `\[\[([^\]|]+)(?:\|[^\]]+)?\]\]`
-- Cached as `.vinote/index.json` with mtime-based invalidation
+- Cached as `~/.config/vinote/index.json` with mtime-based invalidation
 - Rebuild on startup if any file is newer than cache
-- **Performance:** uses `filepath.WalkDir` (no symlink stat overhead), parallel frontmatter parsing via goroutine pool, and incremental cache updates (only re-parse files with changed mtime). Target: <500ms for ~5000 notes
+- **Performance:** uses `filepath.WalkDir` (no symlink stat overhead), sequential frontmatter parsing. Optimize only if needed.
 
 ### Query (`internal/query/`)
-Filter functions on `[]Note`:
-- `ByTag(tag string)` — notes with given tag
-- `ByPath(prefix string)` — notes under a path prefix
-- `ByFrontmatter(key, value string)` — match frontmatter field
-- `NotFrontmatter(key string)` — exclude notes with field set to true
-- `ByDateRange(field string, from, to time.Time)` — date-based filtering
-- Composable: `query.New(notes).ByTag("topic").NotFrontmatter("archived").Results()`
+Standalone filter functions on `[]Note`:
+- `ByTag(notes []Note, tag string) []Note` — notes with given tag
+- `ByPath(notes []Note, prefix string) []Note` — notes under a path prefix
+- `ByFrontmatter(notes []Note, key, value string) []Note` — match frontmatter field
+- `NotFrontmatter(notes []Note, key string) []Note` — exclude notes with field set to true
+- `ByDateRange(notes []Note, field string, from, to time.Time) []Note` — date-based filtering
+- Composable via chaining: `ByTag(NotFrontmatter(notes, "archived"), "topic")`
 
 ### Weekly (`internal/weekly/`)
 
@@ -296,32 +296,31 @@ skip_dirs = ["_plug", "Library", ".git", "archive"]
 - `vn index` command
 
 ### Step 3: Query system
-- Filter by tag, frontmatter, date range, path prefix
-- Composable builder pattern
+- Standalone filter functions by tag, frontmatter, date range, path prefix
 - `vn query` command with JSON output
 
-### Step 4: Weekly note creation
-- Read existing SB template, create weekly note file (preserving `${query[[...]]}` syntax)
-- `vn weekly --create` command
-- `vn weekly-view` command (dynamic data from index)
-
-### Step 5: Wikilinks + backlinks
+### Step 4: Wikilinks + backlinks
 - Parse, resolve, find backlinks
 - `vn backlinks` and `vn resolve` commands
 
-### Step 6: Neovim plugin — core
+### Step 5: Neovim plugin — core
 - `<leader>vo` open note (snacks.picker + `vn query`)
 - `<leader>vs` search (snacks.picker live grep)
-- `gf` wikilink resolution
-
-### Step 7: Neovim plugin — weekly view
-- `<leader>vw` float with dynamic weekly data
-- Selectable items (meetings, topics) → open note
-- Auto-create weekly file if missing
-
-### Step 8: Neovim plugin — topics, backlinks, new note
 - `<leader>vt` topics picker
 - `<leader>vb` backlinks picker
+- `gf` wikilink resolution
+
+### Step 6: Weekly note creation
+- Read existing SB template, create weekly note file (preserving `${query[[...]]}` syntax)
+- `vn weekly --create` command
+- `<leader>vw` — opens weekly note file
+
+### Step 7: Weekly dynamic view
+- `vn weekly-view` command (dynamic data from index)
+- `<leader>vw` float with meetings and topics
+- Selectable items → open note
+
+### Step 8: Neovim plugin — new note
 - `<leader>vn` new note flow
 
 ---
