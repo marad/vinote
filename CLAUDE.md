@@ -1,4 +1,3 @@
-Wczytaj instrukcje z AGENTS.md.
 
 <!-- seeds:start -->
 ## Issue Tracking (Seeds)
