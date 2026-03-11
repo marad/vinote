@@ -377,6 +377,17 @@ function M.setup(opts)
   vim.keymap.set("n", "<leader>vt", M.topics, { desc = "Topics" })
   vim.keymap.set("n", "<leader>vb", M.backlinks, { desc = "Backlinks" })
 
+  -- Register blink.cmp wikilink completion source
+  local has_blink, blink = pcall(require, "blink.cmp")
+  if has_blink then
+    blink.add_source_provider("vinote", {
+      name = "vinote",
+      module = "blink.cmp.sources.vinote",
+      score_offset = 10,
+    })
+    blink.add_filetype_source("markdown", "vinote")
+  end
+
   -- gf override only in markdown buffers
   local group = vim.api.nvim_create_augroup("vinote", { clear = true })
   vim.api.nvim_create_autocmd("FileType", {
