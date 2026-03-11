@@ -3,7 +3,7 @@
 
 project:
   name: vinote
-  root: /Users/marcin.radoszewski/dev/vinote
+  root: .
   canonicalBranch: main
   qualityGates:
     - name: Tests
