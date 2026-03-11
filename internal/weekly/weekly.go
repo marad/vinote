@@ -15,6 +15,8 @@ import (
 // WeeklyData holds dynamic weekly view data built from the index.
 type WeeklyData struct {
 	Week       string       `json:"week"`
+	PrevWeek   string       `json:"prev_week"`
+	NextWeek   string       `json:"next_week"`
 	DateRange  string       `json:"date_range"`
 	FilePath   string       `json:"file_path"`
 	FileExists bool         `json:"file_exists"`
@@ -84,8 +86,15 @@ func WeeklyView(cfg config.Config, notes []index.Note, weekStart time.Time) Week
 	meetings := query.ByDateRange(query.ByTag(notes, "meeting"), "date", weekStart, weekEnd)
 	topics := query.ByTag(query.NotFrontmatter(notes, "archived"), "topic")
 
+	prevStart := weekStart.AddDate(0, 0, -7)
+	nextStart := weekStart.AddDate(0, 0, 7)
+	prevYear, prevW := prevStart.ISOWeek()
+	nextYear, nextW := nextStart.ISOWeek()
+
 	return WeeklyData{
 		Week:       fmt.Sprintf("%d-W%02d", isoYear, isoWeek),
+		PrevWeek:   fmt.Sprintf("%d-W%02d", prevYear, prevW),
+		NextWeek:   fmt.Sprintf("%d-W%02d", nextYear, nextW),
 		DateRange:  fmt.Sprintf("%s – %s", weekStart.Format("Jan 2"), weekEnd.Format("Jan 2, 2006")),
 		FilePath:   relPath,
 		FileExists: fileExists,

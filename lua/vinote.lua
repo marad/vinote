@@ -59,12 +59,32 @@ local function notes_to_items(notes, dir)
   local items = {}
   for _, note in ipairs(notes) do
     table.insert(items, {
-      text = note.title,
+      text = note.path,
       file = dir .. "/" .. note.path .. ".md",
       note = note,
     })
   end
   return items
+end
+
+--- Format picker items with left-truncated paths.
+---@param item snacks.picker.Item
+---@param picker snacks.Picker
+---@return snacks.picker.Highlight[]
+local function format_note(item, picker)
+  local ret = {}
+  ret[#ret + 1] = {
+    "",
+    resolve = function(max_width)
+      local path = item.text or ""
+      local tw = vim.api.nvim_strwidth(path)
+      if tw > max_width then
+        path = "…" .. vim.fn.strcharpart(path, tw - max_width + 1, max_width - 1)
+      end
+      return { { path, "SnacksPickerFile" } }
+    end,
+  }
+  return ret
 end
 
 --- Open a snacks picker for notes.
@@ -76,7 +96,7 @@ local function notes_picker(title, items, dir)
     title = title,
     items = items,
     cwd = dir,
-    format = "text",
+    format = format_note,
     preview = "file",
     confirm = "jump",
   })
@@ -155,8 +175,13 @@ function M.follow_link()
 end
 
 --- Weekly view in a float window.
-function M.weekly()
-  vn_async({ "weekly-view" }, function(output)
+---@param week string|nil Week in YYYY-Www format (nil = current week)
+function M.weekly(week)
+  local args = { "weekly-view" }
+  if week then
+    table.insert(args, "--week=" .. week)
+  end
+  vn_async(args, function(output)
     local data = vim.json.decode(output)
     if not data then
       vim.notify("Failed to parse weekly data", vim.log.levels.ERROR)
@@ -172,20 +197,52 @@ function M.weekly()
     local meetings = type(data.meetings) == "table" and data.meetings or {}
     local topics = type(data.topics) == "table" and data.topics or {}
 
-    table.insert(lines, "## Meetings")
-    if #meetings > 0 then
-      for _, m in ipairs(meetings) do
-        table.insert(lines, "  - " .. m.title)
+    table.insert(lines, "## Topics")
+    if #topics > 0 then
+      for _, t in ipairs(topics) do
+        table.insert(lines, "  - " .. t.title)
       end
     else
       table.insert(lines, "  (none)")
     end
 
+    local day_names = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
+
     table.insert(lines, "")
-    table.insert(lines, "## Topics")
-    if #topics > 0 then
-      for _, t in ipairs(topics) do
-        table.insert(lines, "  - " .. t.title)
+    table.insert(lines, "## Meetings")
+    if #meetings > 0 then
+      -- Group by date, sort by hour within each day
+      local by_date = {}
+      local dates = {}
+      for _, m in ipairs(meetings) do
+        local date = (m.frontmatter and m.frontmatter.date or ""):match("^(%d%d%d%d%-%d%d%-%d%d)")
+        if date then
+          if not by_date[date] then
+            by_date[date] = {}
+            table.insert(dates, date)
+          end
+          table.insert(by_date[date], m)
+        end
+      end
+      table.sort(dates)
+      for _, date in ipairs(dates) do
+        local day_meetings = by_date[date]
+        table.sort(day_meetings, function(a, b)
+          local ha = a.frontmatter and a.frontmatter.hour or ""
+          local hb = b.frontmatter and b.frontmatter.hour or ""
+          return ha < hb
+        end)
+        -- Compute day of week name from date string
+        local y, mo, d = date:match("(%d+)-(%d+)-(%d+)")
+        local ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d) })
+        local wday = os.date("*t", ts).wday -- 1=Sunday
+        local day_name = day_names[wday == 1 and 7 or (wday - 1)]
+        table.insert(lines, "")
+        table.insert(lines, "### " .. day_name .. " (" .. date .. ")")
+        for _, m in ipairs(day_meetings) do
+          local hour = m.frontmatter and m.frontmatter.hour or "??:??"
+          table.insert(lines, "  - " .. hour .. " " .. m.title)
+        end
       end
     else
       table.insert(lines, "  (none)")
@@ -197,7 +254,8 @@ function M.weekly()
     vim.list_extend(all_notes, meetings)
     vim.list_extend(all_notes, topics)
     for line_idx, l in ipairs(lines) do
-      local title = l:match("^  %- (.+)")
+      -- Match "  - HH:MM title" or "  - title"
+      local title = l:match("^  %- %d%d:%d%d (.+)") or l:match("^  %- (.+)")
       if title then
         for _, n in ipairs(all_notes) do
           if n.title == title then
@@ -247,6 +305,16 @@ function M.weekly()
           vim.cmd.edit(dir .. "/" .. note.path .. ".md")
         end)
       end
+    end, opts)
+
+    vim.keymap.set("n", "h", function()
+      vim.api.nvim_win_close(win, true)
+      M.weekly(data.prev_week)
+    end, opts)
+
+    vim.keymap.set("n", "l", function()
+      vim.api.nvim_win_close(win, true)
+      M.weekly(data.next_week)
     end, opts)
 
     vim.keymap.set("n", "e", function()

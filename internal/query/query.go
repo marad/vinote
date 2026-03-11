@@ -81,6 +81,9 @@ func NotFrontmatter(notes []index.Note, key string) []index.Note {
 
 // ByDateRange returns notes where the frontmatter date field falls within [from, to].
 func ByDateRange(notes []index.Note, field string, from, to time.Time) []index.Note {
+	from = truncateToDate(from)
+	to = truncateToDate(to)
+
 	var result []index.Note
 	for _, n := range notes {
 		if n.Frontmatter == nil {
@@ -90,17 +93,38 @@ func ByDateRange(notes []index.Note, field string, from, to time.Time) []index.N
 		if !ok {
 			continue
 		}
-		dateStr, ok := raw.(string)
+		t, ok := parseDate(raw)
 		if !ok {
 			continue
 		}
-		t, err := time.Parse("2006-01-02", dateStr)
-		if err != nil {
-			continue
-		}
+		t = truncateToDate(t)
 		if (t.Equal(from) || t.After(from)) && (t.Equal(to) || t.Before(to)) {
 			result = append(result, n)
 		}
 	}
 	return result
+}
+
+// parseDate extracts a time.Time from a frontmatter value.
+// Handles: time.Time (YAML v3), and various string formats.
+func parseDate(v any) (time.Time, bool) {
+	switch val := v.(type) {
+	case time.Time:
+		return val, true
+	case string:
+		for _, layout := range []string{
+			"2006-01-02",
+			time.RFC3339,
+			"2006-01-02T15:04:05Z",
+		} {
+			if t, err := time.Parse(layout, val); err == nil {
+				return t, true
+			}
+		}
+	}
+	return time.Time{}, false
+}
+
+func truncateToDate(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }

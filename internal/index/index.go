@@ -87,15 +87,9 @@ func parseNote(absPath, notesDir string) (Note, error) {
 	relPath = strings.TrimSuffix(relPath, ".md")
 
 	text := string(content)
-	fm, body := ParseFrontmatter(text)
+	fm, _ := ParseFrontmatter(text)
 
-	title := ExtractTitle(fm)
-	if title == "" {
-		title = extractH1(body)
-	}
-	if title == "" {
-		title = filepath.Base(relPath)
-	}
+	title := filepath.Base(relPath)
 
 	tags := ExtractTags(fm)
 	wikilinks := extractWikilinks(text)
