@@ -326,10 +326,26 @@ function M.weekly(week)
   end)
 end
 
---- Create a new note with frontmatter.
-function M.new()
+--- Get current buffer's relative note path (without .md), or nil if not in notes_dir.
+---@param dir string
+---@return string|nil
+local function current_note_rel(dir)
+  local buf_path = vim.api.nvim_buf_get_name(0)
+  if buf_path == "" then
+    return nil
+  end
+  local prefix = vim.pesc(dir) .. "/"
+  if not buf_path:match("^" .. prefix) then
+    return nil
+  end
+  return buf_path:gsub("^" .. prefix, ""):gsub("%.md$", "")
+end
+
+--- Create a new note with frontmatter, optionally pre-filling the path.
+---@param prefill string|nil
+local function create_note(prefill)
   get_notes_dir(function(dir)
-    vim.ui.input({ prompt = "Note path (relative to notes): " }, function(input)
+    vim.ui.input({ prompt = "Note path (relative to notes): ", default = prefill or "" }, function(input)
       if not input or input == "" then
         return
       end
@@ -359,6 +375,37 @@ function M.new()
   end)
 end
 
+--- Create a new note with frontmatter.
+function M.new()
+  create_note()
+end
+
+--- Create a new child note under the current note.
+function M.new_child()
+  get_notes_dir(function(dir)
+    local rel = current_note_rel(dir)
+    if not rel then
+      vim.notify("Current buffer is not a note", vim.log.levels.WARN)
+      return
+    end
+    create_note(rel .. "/")
+  end)
+end
+
+--- Create a new sibling note beside the current note.
+function M.new_sibling()
+  get_notes_dir(function(dir)
+    local rel = current_note_rel(dir)
+    if not rel then
+      vim.notify("Current buffer is not a note", vim.log.levels.WARN)
+      return
+    end
+    local parent = rel:match("^(.+)/") or ""
+    local prefill = parent ~= "" and (parent .. "/") or ""
+    create_note(prefill)
+  end)
+end
+
 --- Setup keybindings.
 function M.setup(opts)
   opts = opts or {}
@@ -373,7 +420,13 @@ function M.setup(opts)
   vim.keymap.set("n", "<leader>vw", M.weekly, { desc = "Weekly view" })
   vim.keymap.set("n", "<leader>vo", M.open, { desc = "Open note" })
   vim.keymap.set("n", "<leader>vs", M.search, { desc = "Search notes" })
-  vim.keymap.set("n", "<leader>vn", M.new, { desc = "New note" })
+  local wk_ok, wk = pcall(require, "which-key")
+  if wk_ok then
+    wk.add({ "<leader>vn", group = "New note" })
+  end
+  vim.keymap.set("n", "<leader>vnn", M.new, { desc = "New note" })
+  vim.keymap.set("n", "<leader>vnc", M.new_child, { desc = "New child note" })
+  vim.keymap.set("n", "<leader>vns", M.new_sibling, { desc = "New sibling note" })
   vim.keymap.set("n", "<leader>vt", M.topics, { desc = "Topics" })
   vim.keymap.set("n", "<leader>vb", M.backlinks, { desc = "Backlinks" })
 
