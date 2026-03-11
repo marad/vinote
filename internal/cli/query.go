@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/mradoszewski/vinote/internal/config"
@@ -22,6 +23,7 @@ func QueryCmd() *cobra.Command {
 		dateFrom  string
 		dateTo    string
 		dateField string
+		sortBy    string
 		jsonOut   bool
 		all       bool
 	)
@@ -75,6 +77,22 @@ func QueryCmd() *cobra.Command {
 				}
 			}
 
+			// Sort results
+			switch sortBy {
+			case "mtime":
+				sort.Slice(notes, func(i, j int) bool {
+					return notes[i].ModTime.After(notes[j].ModTime)
+				})
+			case "title":
+				sort.Slice(notes, func(i, j int) bool {
+					return notes[i].Title < notes[j].Title
+				})
+			case "path":
+				sort.Slice(notes, func(i, j int) bool {
+					return notes[i].Path < notes[j].Path
+				})
+			}
+
 			// Default to JSON if stdout is not a terminal
 			useJSON := jsonOut
 			if !useJSON {
@@ -105,6 +123,7 @@ func QueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&dateFrom, "from", "", "Date range start (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dateTo, "to", "", "Date range end (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dateField, "date-field", "date", "Frontmatter field for date filtering")
+	cmd.Flags().StringVar(&sortBy, "sort", "mtime", "Sort by: mtime (newest first), title, path")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Force JSON output")
 	cmd.Flags().BoolVar(&all, "all", false, "Return all notes (no filters)")
 

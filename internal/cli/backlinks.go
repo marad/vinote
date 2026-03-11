@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/mradoszewski/vinote/internal/config"
 	"github.com/mradoszewski/vinote/internal/index"
@@ -28,6 +29,10 @@ func BacklinksCmd() *cobra.Command {
 			}
 
 			notes := wikilink.Backlinks(idx, args[0])
+
+			sort.Slice(notes, func(i, j int) bool {
+				return notes[i].ModTime.After(notes[j].ModTime)
+			})
 
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
