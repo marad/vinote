@@ -406,6 +406,33 @@ function M.new_sibling()
   end)
 end
 
+--- Delete the current note (with confirmation).
+function M.delete()
+  get_notes_dir(function(dir)
+    local rel = current_note_rel(dir)
+    if not rel then
+      vim.notify("Current buffer is not a note", vim.log.levels.WARN)
+      return
+    end
+
+    local abs_path = dir .. "/" .. rel .. ".md"
+    vim.ui.select({ "No", "Yes" }, {
+      prompt = "Delete " .. rel .. "?",
+    }, function(choice)
+      if choice ~= "Yes" then
+        return
+      end
+      local ok, err = os.remove(abs_path)
+      if ok then
+        vim.cmd.bdelete()
+        vim.notify("Deleted: " .. rel, vim.log.levels.INFO)
+      else
+        vim.notify("Failed to delete: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
 --- Create a new meeting note from template.
 function M.new_meeting()
   get_notes_dir(function(dir)
@@ -489,6 +516,7 @@ function M.setup(opts)
   vim.keymap.set("n", "<leader>vnc", M.new_child, { desc = "New child note" })
   vim.keymap.set("n", "<leader>vns", M.new_sibling, { desc = "New sibling note" })
   vim.keymap.set("n", "<leader>vnm", M.new_meeting, { desc = "New meeting note" })
+  vim.keymap.set("n", "<leader>vd", M.delete, { desc = "Delete note" })
   vim.keymap.set("n", "<leader>vt", M.topics, { desc = "Topics" })
   vim.keymap.set("n", "<leader>vb", M.backlinks, { desc = "Backlinks" })
 
