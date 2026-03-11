@@ -406,6 +406,67 @@ function M.new_sibling()
   end)
 end
 
+--- Create a new meeting note from template.
+function M.new_meeting()
+  get_notes_dir(function(dir)
+    vim.ui.input({ prompt = "Meeting name: " }, function(name)
+      if not name or name == "" then
+        return
+      end
+
+      local today = os.date("%Y-%m-%d")
+      local rel_path = "Allegro/Journal/Day/" .. today .. "/" .. name .. ".md"
+      local abs_path = dir .. "/" .. rel_path
+
+      -- Check if file already exists
+      if vim.fn.filereadable(abs_path) == 1 then
+        vim.cmd.edit(abs_path)
+        return
+      end
+
+      local parent = vim.fn.fnamemodify(abs_path, ":h")
+      vim.fn.mkdir(parent, "p")
+
+      -- Rounded time to nearest 15 min
+      local h = tonumber(os.date("%H"))
+      local m = tonumber(os.date("%M"))
+      m = math.floor(m / 15) * 15
+      local hour = string.format("%02d:%02d", h, m)
+
+      local content = table.concat({
+        "---",
+        "tags: meeting",
+        "date: " .. today,
+        'hour: "' .. hour .. '"',
+        "---",
+        "# Agenda",
+        "**Temat**: ",
+        "",
+        "# Uczestnicy",
+        "- ",
+        "",
+        "# Minutki",
+        "- ",
+        "",
+        "# Ustalenia",
+        "- ",
+      }, "\n") .. "\n"
+
+      local f = io.open(abs_path, "w")
+      if f then
+        f:write(content)
+        f:close()
+        vim.cmd.edit(abs_path)
+        -- Place cursor at end of "**Temat**: " line
+        vim.api.nvim_win_set_cursor(0, { 7, 11 })
+        vim.cmd("startinsert!")
+      else
+        vim.notify("Failed to create: " .. abs_path, vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
 --- Setup keybindings.
 function M.setup(opts)
   opts = opts or {}
@@ -427,6 +488,7 @@ function M.setup(opts)
   vim.keymap.set("n", "<leader>vnn", M.new, { desc = "New note" })
   vim.keymap.set("n", "<leader>vnc", M.new_child, { desc = "New child note" })
   vim.keymap.set("n", "<leader>vns", M.new_sibling, { desc = "New sibling note" })
+  vim.keymap.set("n", "<leader>vnm", M.new_meeting, { desc = "New meeting note" })
   vim.keymap.set("n", "<leader>vt", M.topics, { desc = "Topics" })
   vim.keymap.set("n", "<leader>vb", M.backlinks, { desc = "Backlinks" })
 
@@ -441,8 +503,20 @@ function M.setup(opts)
     blink.add_filetype_source("markdown", "vinote")
   end
 
-  -- gf override only in markdown buffers
+  -- Markdown buffer overrides (only for files inside notes_dir)
   local group = vim.api.nvim_create_augroup("vinote", { clear = true })
+  vim.api.nvim_create_autocmd("BufEnter", {
+    group = group,
+    pattern = "*.md",
+    callback = function(ev)
+      get_notes_dir(function(dir)
+        local buf_path = vim.api.nvim_buf_get_name(ev.buf)
+        if buf_path:sub(1, #dir + 1) == dir .. "/" then
+          vim.cmd.lcd(dir)
+        end
+      end)
+    end,
+  })
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     pattern = "markdown",
