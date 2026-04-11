@@ -19,6 +19,7 @@ func QueryCmd() *cobra.Command {
 		tags      []string
 		notFields []string
 		pathPfx   string
+		name      string
 		fields    []string
 		dateFrom  string
 		dateTo    string
@@ -54,6 +55,9 @@ func QueryCmd() *cobra.Command {
 				if pathPfx != "" {
 					notes = query.ByPath(notes, pathPfx)
 				}
+				if name != "" {
+					notes = query.ByName(notes, name)
+				}
 				for _, f := range fields {
 					k, v := splitKeyValue(f)
 					if k != "" {
@@ -77,7 +81,10 @@ func QueryCmd() *cobra.Command {
 				}
 			}
 
-			// Sort results
+			// Sort results (skip if --name was used and --sort was not explicitly set)
+			if name != "" && !cmd.Flags().Changed("sort") {
+				sortBy = ""
+			}
 			switch sortBy {
 			case "mtime":
 				sort.Slice(notes, func(i, j int) bool {
@@ -119,6 +126,7 @@ func QueryCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "Filter by tag (repeatable)")
 	cmd.Flags().StringSliceVar(&notFields, "not", nil, "Exclude by frontmatter field (repeatable)")
 	cmd.Flags().StringVar(&pathPfx, "path", "", "Filter by path prefix")
+	cmd.Flags().StringVar(&name, "name", "", "Fuzzy search by note title")
 	cmd.Flags().StringSliceVar(&fields, "field", nil, "Filter by frontmatter key=value (repeatable)")
 	cmd.Flags().StringVar(&dateFrom, "from", "", "Date range start (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dateTo, "to", "", "Date range end (YYYY-MM-DD)")

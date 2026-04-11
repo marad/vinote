@@ -62,6 +62,32 @@ func ConfigDir() string {
 	return configDir()
 }
 
+// ConfigFilePath returns the full path to the config file.
+func ConfigFilePath() string {
+	return filepath.Join(configDir(), "config.toml")
+}
+
+// DefaultConfigTOML returns the default config file content with explanatory comments.
+func DefaultConfigTOML() string {
+	return `# vinote configuration
+
+# Path to your notes directory. Tilde (~) is expanded to $HOME.
+notes_dir = "~/notes"
+
+# Editor command used for opening notes.
+editor = "nvim"
+
+# Directory for weekly notes, relative to notes_dir.
+weekly_dir = "Allegro/Journal/Week"
+
+# Path to the weekly note template file, relative to notes_dir.
+weekly_template = "templates/Weekly.md"
+
+# Directories to skip during indexing (relative names, matched anywhere in the tree).
+skip_dirs = ["_plug", "Library", ".git", ".opencode", "archive"]
+`
+}
+
 func expandTilde(path string) string {
 	if len(path) == 0 || path[0] != '~' {
 		return path

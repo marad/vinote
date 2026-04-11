@@ -15,6 +15,7 @@ func main() {
 	}
 
 	root.AddCommand(
+		cli.InitCmd(),
 		cli.IndexCmd(),
 		cli.QueryCmd(),
 		cli.BacklinksCmd(),

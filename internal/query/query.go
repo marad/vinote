@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,61 @@ func ByTag(notes []index.Note, tag string) []index.Note {
 		}
 	}
 	return result
+}
+
+// ByName returns notes whose title fuzzy-matches the pattern, sorted by score (best first).
+func ByName(notes []index.Note, pattern string) []index.Note {
+	pattern = strings.ToLower(pattern)
+	type scored struct {
+		note  index.Note
+		score int
+	}
+	var matches []scored
+	for _, n := range notes {
+		if s := fuzzyScore(strings.ToLower(n.Title), pattern); s > 0 {
+			matches = append(matches, scored{n, s})
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].score > matches[j].score
+	})
+	result := make([]index.Note, len(matches))
+	for i, m := range matches {
+		result[i] = m.note
+	}
+	return result
+}
+
+// fuzzyScore returns a score for how well pattern matches text (0 = no match).
+// Higher is better. Rewards consecutive matches and word-boundary alignment.
+func fuzzyScore(text, pattern string) int {
+	if len(pattern) == 0 {
+		return 1
+	}
+	score := 0
+	pi := 0
+	prevMatchPos := -2
+	for i := 0; i < len(text) && pi < len(pattern); i++ {
+		if text[i] != pattern[pi] {
+			continue
+		}
+		score++
+		if i == prevMatchPos+1 {
+			score += 3
+		}
+		if i == 0 || text[i-1] == ' ' || text[i-1] == '/' || text[i-1] == '-' || text[i-1] == '_' {
+			score += 5
+		}
+		prevMatchPos = i
+		pi++
+	}
+	if pi < len(pattern) {
+		return 0
+	}
+	if bonus := 50 - len(text); bonus > 0 {
+		score += bonus
+	}
+	return score
 }
 
 // ByPath returns notes whose path starts with the given prefix.
