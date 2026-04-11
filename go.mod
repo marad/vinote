@@ -1,4 +1,4 @@
-module github.com/mradoszewski/vinote
+module github.com/marad/vinote
 
 go 1.25.5
 

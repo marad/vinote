@@ -7,9 +7,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mradoszewski/vinote/internal/config"
-	"github.com/mradoszewski/vinote/internal/index"
-	"github.com/mradoszewski/vinote/internal/query"
+	"github.com/marad/vinote/internal/config"
+	"github.com/marad/vinote/internal/index"
+	"github.com/marad/vinote/internal/query"
 	"github.com/spf13/cobra"
 )
 

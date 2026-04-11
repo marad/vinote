@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mradoszewski/vinote/internal/index"
+	"github.com/marad/vinote/internal/index"
 )
 
 var testNotes = []index.Note{

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mradoszewski/vinote/internal/cli"
+	"github.com/marad/vinote/internal/cli"
 	"github.com/spf13/cobra"
 )
 

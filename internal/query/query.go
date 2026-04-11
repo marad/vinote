@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mradoszewski/vinote/internal/index"
+	"github.com/marad/vinote/internal/index"
 )
 
 // ByTag returns notes containing the given tag (case-insensitive).

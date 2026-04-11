@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mradoszewski/vinote/internal/config"
+	"github.com/marad/vinote/internal/config"
 )
 
 var wikilinkRe = regexp.MustCompile(`\[\[([^\]|]+)(?:\|[^\]]+)?\]\]`)
