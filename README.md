@@ -17,6 +17,7 @@ Terminal note-taking system: a Go CLI (`vn`) paired with a Neovim plugin.
 
 ```sh
 go install github.com/marad/vinote/cmd/vn@latest
+vn init
 ```
 
 ### Neovim plugin
@@ -39,8 +40,9 @@ Requires [snacks.nvim](https://github.com/folke/snacks.nvim) for picker UI.
 
 | Command | Description |
 |---------|-------------|
+| `vn init` | Initialize config file with defaults |
 | `vn index` | Build/refresh the notes index |
-| `vn query` | Query notes by tags and frontmatter |
+| `vn query` | Query notes by tags, frontmatter, and fuzzy name search |
 | `vn backlinks <path>` | Find notes linking to a given note |
 | `vn resolve <wikilink>` | Resolve a wikilink to a file path |
 | `vn weekly` | Get weekly note metadata |
