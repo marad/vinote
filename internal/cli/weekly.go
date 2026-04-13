@@ -35,7 +35,11 @@ func WeeklyCmd() *cobra.Command {
 
 			if create {
 				if _, err := os.Stat(filePath); os.IsNotExist(err) {
-					created, err := weekly.CreateFromTemplate(cfg, ws)
+					idx, err := index.Load(cfg)
+					if err != nil {
+						return err
+					}
+					created, err := weekly.CreateFromTemplate(cfg, ws, idx.Notes)
 					if err != nil {
 						return err
 					}
