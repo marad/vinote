@@ -319,8 +319,15 @@ function M.weekly(week)
 
     vim.keymap.set("n", "e", function()
       vim.api.nvim_win_close(win, true)
-      get_notes_dir(function(dir)
-        vim.cmd.edit(dir .. "/" .. data.file_path)
+      local create_args = { "weekly", "--create" }
+      if data.week then
+        table.insert(create_args, "--week=" .. data.week)
+      end
+      vn_async(create_args, function(output)
+        local path = vim.trim(output)
+        if path ~= "" then
+          vim.cmd.edit(path)
+        end
       end)
     end, opts)
   end)
