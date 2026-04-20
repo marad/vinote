@@ -1,8 +1,8 @@
 BINARY  := vn
 MODULE  := github.com/marad/vinote
 CMD     := ./cmd/vn
-PREFIX  ?= /usr/local
-BINDIR  := $(PREFIX)/bin
+GOBIN   ?= $(shell go env GOBIN)
+BINDIR  := $(or $(GOBIN),$(shell go env GOPATH)/bin)
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
