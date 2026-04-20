@@ -5,7 +5,8 @@ local binary = "vn"
 --- Run vn command asynchronously and call on_result with parsed output.
 ---@param args string[]
 ---@param on_result fun(output: string)
-local function vn_async(args, on_result)
+---@param on_error? fun(code: number) Optional error handler; if nil, a default notification is shown.
+local function vn_async(args, on_result, on_error)
   local stdout = {}
   vim.fn.jobstart(vim.list_extend({ binary }, args), {
     stdout_buffered = true,
@@ -20,7 +21,11 @@ local function vn_async(args, on_result)
         end)
       else
         vim.schedule(function()
-          vim.notify("vn " .. table.concat(args, " ") .. " failed (exit " .. code .. ")", vim.log.levels.ERROR)
+          if on_error then
+            on_error(code)
+          else
+            vim.notify("vn " .. table.concat(args, " ") .. " failed (exit " .. code .. ")", vim.log.levels.ERROR)
+          end
         end)
       end
     end,
@@ -164,13 +169,19 @@ function M.follow_link()
     return
   end
 
-  vn_async({ "resolve", link }, function(output)
-    local path = vim.trim(output)
-    if path ~= "" then
-      vim.cmd.edit(path)
-    else
-      vim.notify("Wikilink not found: " .. link, vim.log.levels.WARN)
-    end
+  get_notes_dir(function(dir)
+    vn_async({ "resolve", link }, function(output)
+      local path = vim.trim(output)
+      if path ~= "" then
+        vim.cmd.edit(path)
+      end
+    end, function()
+      -- Note doesn't exist — open buffer at expected path so user can create it
+      local abs_path = dir .. "/" .. link .. ".md"
+      local parent = vim.fn.fnamemodify(abs_path, ":h")
+      vim.fn.mkdir(parent, "p")
+      vim.cmd.edit(abs_path)
+    end)
   end)
 end
 
@@ -374,7 +385,7 @@ local function create_note(prefill)
         f:write(content)
         f:close()
         vim.cmd.edit(abs_path)
-        vim.api.nvim_win_set_cursor(0, { 6, 0 })
+        vim.api.nvim_win_set_cursor(0, { 5, 0 })
       else
         vim.notify("Failed to create: " .. abs_path, vim.log.levels.ERROR)
       end
