@@ -117,6 +117,25 @@ function M.open()
   end)
 end
 
+--- Recent notes picker (recently opened notes from v:oldfiles, most-recent first).
+function M.recent()
+  get_notes_dir(function(dir)
+    local prefix = dir .. "/"
+    local notes = {}
+    for _, path in ipairs(vim.v.oldfiles) do
+      if path:sub(1, #prefix) == prefix and path:sub(-3) == ".md" and vim.fn.filereadable(path) == 1 then
+        local rel = path:sub(#prefix + 1):gsub("%.md$", "")
+        table.insert(notes, { path = rel })
+      end
+    end
+    if #notes == 0 then
+      vim.notify("No recent notes", vim.log.levels.INFO)
+      return
+    end
+    notes_picker("Recent Notes", notes_to_items(notes, dir), dir)
+  end)
+end
+
 --- Search notes content (live grep via snacks).
 function M.search()
   get_notes_dir(function(dir)
@@ -526,6 +545,7 @@ function M.setup(opts)
   vim.keymap.set("n", "<leader>vw", M.weekly, { desc = "Weekly view" })
   vim.keymap.set("n", "<leader>vo", M.open, { desc = "Open note" })
   vim.keymap.set("n", "<leader>vs", M.search, { desc = "Search notes" })
+  vim.keymap.set("n", "<leader>vr", M.recent, { desc = "Recent notes" })
   local wk_ok, wk = pcall(require, "which-key")
   if wk_ok then
     wk.add({ "<leader>vn", group = "New note" })
